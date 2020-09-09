@@ -94,11 +94,12 @@ const Binding = require('./ui/binding');
 const Body = require('./ui/body');
 const Button = require('./ui/button');
 const Label = require('./ui/label');
+const ListView = require('./ui/list-view');
+const Message = require('./message');
 const Model = require('./model');
+const Popup = require('./ui/popup');
 const Row = require('./ui/row');
 const SVG = require('./ui/svg');
-const Popup = require('./ui/popup');
-const ListView = require('./ui/list-view');
 
 window.onload = () => {
     let model = new Model();
@@ -113,16 +114,16 @@ window.onload = () => {
 
         ),
         new Row(
-            new Button('1', 'value').onclick(() => { }),
-            new Button('120', 'value').onclick(() => { }),
-            new Button(new Binding(model.cursor, 'seq', (val) => 1 + val), 'value').onclick(() => { }),
-            new Button('1', 'value').onclick(() => body.present(new Popup(new ListView().onupdate((l) => {
+            new Button('1', 'value').onmousedown(() => { }),
+            new Button('120', 'value').onmousedown(() => { }),
+            new Button(new Binding(model.cursor, 'seq', (val) => 1 + val), 'value').onmousedown(() => { }),
+            new Button('1', 'value').onmousedown(() => body.present(new Popup(new ListView().onupdate((l) => {
                 l.items = Array.from(model.midi.outputs.values()).map((p) => { return { label: p.name, port: p } });
-            }).onclick((i) => {
+            }).onmousedown((i) => {
                 model.player.output = i.port;
                 body.dismiss();
             })))),
-            new Button(new Binding(model.cursor, 'bar', (val) => 1 + val), 'value').onclick(() => { }),
+            new Button(new Binding(model.cursor, 'bar', (val) => 1 + val), 'value').onmousedown(() => { }),
             new Button('Notes', 'value'),
         ),
         new Row(
@@ -138,9 +139,9 @@ window.onload = () => {
             new NoteLenPicker(model, '&#119136;', 2),
             new NoteLenPicker(model, '&#119137;', 1),
 
-            new Button(new Binding(model, 'velocity', Binding.number), 'value').onclick(() => model.nextVelocity()),
-            new Button('-', 'value').onclick(() => model.cursor.octaveDown()),
-            new OctavePicker().onclick((i) => {
+            new Button(new Binding(model, 'velocity', Binding.number), 'value').onmousedown(() => model.nextVelocity()),
+            new Button('-', 'value').onmousedown(() => model.cursor.octaveDown()),
+            new OctavePicker().onmousedown((i) => {
                 model.cursor.octave = -2 + i * 3;
             }).onupdate((op) => {
                 for (let i = 0; i < 5; i++) {
@@ -150,55 +151,24 @@ window.onload = () => {
                     op.fill(i, -2 + i * 3 == cursor.octave ? 'gray' : events.length ? 'lightgray' : 'white');
                 }
             }),
-            new Button('+', 'value').onclick(() => model.cursor.octaveUp()),
+            new Button('+', 'value').onmousedown(() => model.cursor.octaveUp()),
             new Button('Tie', 'value'),
             new Button('Rest', 'value'),
         ),
-        new Row(
-            new PianoKeyboard().onclick((note) => {
-                let { sequence, cursor } = model;
-                let { seq, track, time, octave, velocity, len } = cursor;
-                note += octave * 12;
-                sequence.toggle(seq, track, time, note, velocity, len);
-            }).onupdate((kb) => {
-                let { sequence, cursor } = model;
-                let { seq, track, time, octave } = cursor;
-                let events = sequence.events.filter((e) => e.seq === seq && e.track === track && e.time === time);
-                for (let i = 0; i < 3 * 12; i++) {
-                    let note = octave * 12 + i;
-                    kb.mark(i, events.find((e) => e.note === note));
-                }
-            }),
-        ),
+        new PianoKeyboard(model),
         new Row(
             new Label('STEPS'),
         ),
-        new Sequencer().onclick((step) => {
-            model.cursor.step = step;
-            let { len, velocity } = model;
-            if (len) {
-                model.cursor.len = len;
-            }
-            if (velocity) {
-                model.cursor.velocity = velocity;
-            }
-        }).onupdate((sq) => {
-            let { seq, track, bar, step } = model.cursor;
-            for (let i = 0; i < 16; i++) {
-                let events = model.sequence.events.filter((e) => e.seq === seq && e.track === track && e.time === bar * 16 + i);
-                sq.fill(i, i === step ? 'deepskyblue' : 'whitesmoke');
-                sq.mark(i, events.length > 0 ? 'initial' : 'none');
-            }
-        }),
+        new Sequencer(model),
         new Row(
-            new Button('|<', 'small').onclick(() => model.top()),
-            new Button('<<', 'small').onclick(() => model.bwd()),
-            new Button('>>', 'small').onclick(() => model.fwd()),
+            new Button('|<', 'small').onmousedown(() => model.top()),
+            new Button('<<', 'small').onmousedown(() => model.bwd()),
+            new Button('>>', 'small').onmousedown(() => model.fwd()),
         ),
         new Row(
-            new Button('STOP').onclick(() => model.stop()),
-            new Button('PLAY').onclick(() => model.play()),
-            new Button('REC').onclick(() => model.rec()),
+            new Button('STOP').onmousedown(() => model.stop()),
+            new Button('PLAY').onmousedown(() => model.play()),
+            new Button('REC').onmousedown(() => model.rec()),
         ),
     );
     model.player.onchange = () => body.update();
@@ -206,8 +176,10 @@ window.onload = () => {
 };
 
 class PianoKeyboard extends SVG {
-    constructor() {
+    constructor(model) {
         super();
+        this.model = model;
+        this.element.style.flex = 3;
         this.element.setAttribute('viewBox', '0 0 630 60');
         this.keys = {};
         this.marks = {};
@@ -221,13 +193,15 @@ class PianoKeyboard extends SVG {
             let key = this.keys[n] = this.rect(i * 30, 0, 29, 60, 'fill: whitesmoke;');
             key.onmousedown = () => {
                 key.style.fill = 'gray';
-                this.click(n);
+                this.mousedown(n);
             };
             key.onmouseup = () => {
                 key.style.fill = 'whitesmoke';
+                this.mouseup(n);
             };
             key.onmouseout = () => {
                 key.style.fill = 'whitesmoke';
+                this.mouseup(n);
             };
             this.marks[n] = this.circle(i * 30 + 15, 50, 4, 'fill: gray; display: none; pointer-events: none;');
         }
@@ -241,13 +215,15 @@ class PianoKeyboard extends SVG {
                 let key = this.rect(i * 30 + 20, 0, 20, 35, 'fill: black;');
                 key.onmousedown = () => {
                     key.style.fill = 'gray';
-                    this.click(n);
+                    this.mousedown(n);
                 };
                 key.onmouseup = () => {
                     key.style.fill = 'black';
+                    this.mouseup(n);
                 };
                 key.onmouseout = () => {
                     key.style.fill = 'black';
+                    this.mouseup(n);
                 };
                 this.marks[n] = this.circle(i * 30 + 30, 25, 4, 'fill: gray; display: none; pointer-events: none;');
             }
@@ -256,6 +232,34 @@ class PianoKeyboard extends SVG {
 
     mark(note, marked) {
         this.marks[note].style.display = marked ? 'initial' : 'none';
+    }
+
+    mousedown(note) {
+        let { sequence, cursor, player } = this.model;
+        let { seq, track, time, octave, velocity, len } = cursor;
+        note += octave * 12;
+        sequence.toggle(seq, track, time, note, velocity, len);
+        player.send(Message.noteOn(0, note, velocity), true);
+        super.mousedown(note);
+    }
+
+    mouseup(note) {
+        let { cursor, player } = this.model;
+        let { octave } = cursor;
+        note += octave * 12;
+        player.send(Message.noteOff(0, note), true);
+        super.mouseup(note);
+    }
+
+    update() {
+        let { sequence, cursor } = this.model;
+        let { seq, track, time, octave } = cursor;
+        let events = sequence.events.filter((e) => e.seq === seq && e.track === track && e.time === time);
+        for (let i = 0; i < 3 * 12; i++) {
+            let note = octave * 12 + i;
+            this.mark(i, events.find((e) => e.note === note));
+        }
+        super.update();
     }
 }
 
@@ -270,7 +274,7 @@ class OctavePicker extends SVG {
         for (let i = 0; i < 5; i++) {
             let frame = this.rect(i * 30, 0, 30, 30, 'fill: transparent;')
             frame.onmousedown = () => {
-                this.click(i);
+                this.mousedown(i);
             };
             this.marks[i] = this.circle(30 * i + 15, 15, 4, 'fill: white; stroke: gray; stroke-width: 1; pointer-events: none;');
         }
@@ -282,26 +286,28 @@ class OctavePicker extends SVG {
 }
 
 class Sequencer extends SVG {
-    constructor() {
+    constructor(model) {
         super();
-        this.element.style.flex = 3;
         this.element.setAttribute('viewBox', '0 0 480 60');
         this.steps = {};
         this.marks = {};
         this.fills = {};
         this.group = 'sequencers';
+        this.model = model
 
         for (let i = 0; i < 16; i++) {
             let step = this.steps[i] = this.rect(i * 30 + 1, 0, 28, 60, 'fill: whitesmoke');
             step.onmousedown = () => {
                 step.setAttribute('fill', 'gray');
-                this.click(i);
+                this.mousedown(i);
             };
             step.onmouseup = () => {
                 step.setAttribute('fill', this.fills[i] || 'whitesmoke');
+                this.mouseup(i);
             };
             step.onmouseout = () => {
                 step.setAttribute('fill', this.fills[i] || 'whitesmoke');
+                this.mouseup(i);
             };
             if (i % 4 === 0) {
                 this.line(i * 30, 0, i * 30, 60, 'stroke: gray; stroke-width: 1;');
@@ -321,6 +327,38 @@ class Sequencer extends SVG {
     mark(i, display) {
         this.marks[i].style.display = display;
     }
+
+    mousedown(step) {
+        this.model.cursor.step = step;
+        let { len, velocity, events } = this.model;
+        if (len) {
+            this.model.cursor.len = len;
+        }
+        if (velocity) {
+            this.model.cursor.velocity = velocity;
+        }
+        for (let event of events) {
+            this.model.player.send(Message.noteOn(0, event.note, event.velocity), true);
+        }
+        super.mousedown(step);
+    }
+
+    mouseup(step) {
+        for (let event of this.model.events) {
+            this.model.player.send(Message.noteOff(0, event.note), true);
+        }
+        super.mouseup(step);
+    }
+
+    update() {
+        let { seq, track, bar, step } = this.model.cursor;
+        for (let i = 0; i < 16; i++) {
+            let events = this.model.sequence.events.filter((e) => e.seq === seq && e.track === track && e.time === bar * 16 + i);
+            this.fill(i, i === step ? 'deepskyblue' : 'whitesmoke');
+            this.mark(i, events.length > 0 ? 'initial' : 'none');
+        }
+        super.update();
+    }
 }
 
 class NoteLenPicker extends Button {
@@ -330,9 +368,9 @@ class NoteLenPicker extends Button {
         this.value = value;
     }
 
-    click() {
+    mousedown() {
         this.model.len = this.value;
-        super.click();
+        super.mousedown();
     }
 
     update() {
@@ -341,7 +379,7 @@ class NoteLenPicker extends Button {
     }
 }
 
-},{"./model":4,"./ui/binding":7,"./ui/body":8,"./ui/button":9,"./ui/label":11,"./ui/list-view":12,"./ui/popup":13,"./ui/row":14,"./ui/svg":15}],3:[function(require,module,exports){
+},{"./message":3,"./model":4,"./ui/binding":7,"./ui/body":8,"./ui/button":9,"./ui/label":11,"./ui/list-view":12,"./ui/popup":13,"./ui/row":14,"./ui/svg":15}],3:[function(require,module,exports){
 class Message {
     constructor(data) {
         this.data = Array.from(data);
@@ -492,27 +530,28 @@ class Model {
     }
 
     set len(val) {
-        let { seq, track, time } = this.cursor;
-        this.sequence.events.filter((e) => e.seq === seq && e.track === track && e.time === time).forEach((e) => e.len = val);
+        this.events.forEach((e) => e.len = val);
         this.cursor.len = val;
     }
 
     get len() {
-        let { seq, track, time } = this.cursor;
-        let len = this.sequence.events.filter((e) => e.seq === seq && e.track === track && e.time === time).map((e) => e.len)[0];
+        let len = this.events.map((e) => e.len)[0];
         return len || this.cursor.len;
     }
 
     set velocity(val) {
-        let { seq, track, time } = this.cursor;
-        this.sequence.events.filter((e) => e.seq === seq && e.track === track && e.time === time).forEach((e) => e.velocity = val);
+        this.events.forEach((e) => e.velocity = val);
         this.cursor.velocity = val;
     }
 
     get velocity() {
-        let { seq, track, time } = this.cursor;
-        let velocity = this.sequence.events.filter((e) => e.seq === seq && e.track === track && e.time === time).map((e) => e.velocity)[0];
+        let velocity = this.events.map((e) => e.velocity)[0];
         return velocity || this.cursor.velocity;
+    }
+
+    get events() {
+        let { seq, track, time } = this.cursor;
+        return this.sequence.events.filter((e) => e.seq === seq && e.track === track && e.time === time);
     }
 }
 
@@ -687,7 +726,7 @@ class Body extends ViewGroup {
         super(document.body, ...views);
         this.overlay = document.createElement('div');
         this.overlay.className = 'overlay';
-        this.overlay.onclick = (event) => {
+        this.overlay.onmousedown = (event) => {
             if (event.target === this.overlay) {
                 this.dismiss();
             }
@@ -723,19 +762,22 @@ const View = require('./view');
 class Button extends View {
     constructor(label = '', className = null) {
         super(document.createElement('div'));
-        this.element.className = 'button';
+        this.element.style.flex = 1;
+        this.element.classList.add('button');
         if (className) {
             this.element.classList.add(className);
         }
         this.element.onmousedown = () => {
             this.element.classList.toggle('active', true);
-            this.click();
+            this.mousedown();
         };
         this.element.onmouseup = () => {
             this.element.classList.toggle('active', this.selected);
+            this.mouseup();
         };
         this.element.onmouseout = () => {
             this.element.classList.toggle('active', this.selected);
+            this.mouseup();
         };
         this.group = 'buttons';
         this.label = label;
@@ -771,6 +813,7 @@ const View = require('./view');
 class Label extends View {
     constructor(text, span = 1) {
         super(document.createElement('div'));
+        this.element.style.flex = 1;
         this.element.innerHTML = text;
         this.element.className = 'label';
         this.element.style.flex = span;
@@ -788,7 +831,7 @@ class ListView extends Column {
             child.remove();
         }
         for (let item of items) {
-            this.append(new Button(item.label, 'value').onclick(() => this.click(item)));
+            this.append(new Button(item.label, 'value').onmousedown(() => this.mousedown(item)));
         }
     }
 }
@@ -898,11 +941,15 @@ module.exports = ViewGroup;
 class View {
     constructor(element) {
         this.element = element;
-        this.element.style.flex = 1;
     }
 
-    onclick(handler) {
-        this.onclick_ = handler;
+    onmousedown(handler) {
+        this.onmousedown_ = handler;
+        return this;
+    }
+
+    onmouseup(handler) {
+        this.onmouseup_ = handler;
         return this;
     }
 
@@ -911,8 +958,13 @@ class View {
         return this;
     }
 
-    click(...args) {
-        this.onclick_ && this.onclick_(...args);
+    mousedown(...args) {
+        this.onmousedown_ && this.onmousedown_(...args);
+        this.parent && this.parent.notify('update');
+    }
+
+    mouseup(...args) {
+        this.onmouseup_ && this.onmouseup_(...args);
         this.parent && this.parent.notify('update');
     }
 
