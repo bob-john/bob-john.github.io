@@ -115,13 +115,13 @@ window.onload = () => {
             new Label('STEPS'),
         ),
         new Row(
-            new Button('1', 'value').onmousedown(() => { }),
-            new Button('120', 'value').onmousedown(() => { }),
+            new Button('1', 'value').onmousedown(() => body.element.requestFullscreen()),
+            new Button('120', 'value').onmousedown(() => null),
             new Button(new Binding(model.cursor, 'track', (val) => 1 + val), 'value').onmousedown(() => {
                 body.tabbedViews[0].selectedIndex = 1;
             }),
-            new Button(new Binding(model.cursor, 'seq', (val) => 1 + val), 'value').onmousedown(() => { }),
-            new Button(new Binding(model.cursor, 'bar', (val) => 1 + val), 'value').onmousedown(() => { }),
+            new Button(new Binding(model.cursor, 'seq', (val) => 1 + val), 'value').onmousedown(() => null),
+            new Button(new Binding(model.cursor, 'bar', (val) => 1 + val), 'value').onmousedown(() => null),
             new Button('Notes', 'value').onmousedown(() => {
                 body.tabbedViews[0].selectedIndex = 0;
             }),
@@ -830,6 +830,7 @@ const ViewGroup = require('./view-group');
 class Body extends ViewGroup {
     constructor(...views) {
         super(document.body, ...views);
+        this.element.style.backgroundColor = 'white';
         this.overlay = document.createElement('div');
         this.overlay.className = 'overlay';
         this.overlay.onmousedown = (event) => {
