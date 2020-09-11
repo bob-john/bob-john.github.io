@@ -167,15 +167,24 @@ window.onload = () => {
             new TrackListView(),
         ),
         new Row(
-            new Button('|<', 'small').onmousedown(() => model.top()),
-            new Button('<<', 'small').onmousedown(() => model.bwd()),
-            new Button('>>', 'small').onmousedown(() => model.fwd()),
-        ),
-        new Row(
-            new Button('STOP').onmousedown(() => model.stop()),
-            new Button('PLAY').onmousedown(() => model.play()),
-            new Button('REC').onmousedown(() => model.rec()),
-        ),
+            new Column(
+                new Button('<div class="button-label">COPY</div>', 'no-style').onmousedown(() => model.copy()),
+                new Button('<div class="button-label">PASTE</div>', 'no-style').onmousedown(() => model.paste()),
+            ).flex(1),
+            new Button('<div class="button-label">CLEAR</div>', 'no-style').onmousedown(() => model.clear()).flex(1),
+            new Column(
+                new Row(
+                    new Button('|<', 'small').onmousedown(() => model.top()),
+                    new Button('<<', 'small').onmousedown(() => model.bwd()),
+                    new Button('>>', 'small').onmousedown(() => model.fwd()),
+                ),
+                new Row(
+                    new Button('STOP').onmousedown(() => model.stop()),
+                    new Button('PLAY').onmousedown(() => model.play()),
+                    new Button('REC').onmousedown(() => model.rec()),
+                ),
+            ).flex(3),
+        )
     );
     model.player.onchange = () => body.update();
     model.load().then(() => body.reload());
@@ -635,6 +644,21 @@ class Model {
         let { seq, track, time } = this.cursor;
         return this.sequence.events.filter((e) => e.seq === seq && e.track === track && e.time === time);
     }
+
+    copy() {
+        this.clipboard = this.events.map((e) => Object.assign({}, e));
+    }
+
+    paste() {
+        if (this.clipboard) {
+            this.clipboard.forEach((e) => this.sequence.push(e.seq, e.track, this.cursor.time, e.note, e.velocity, e.len));
+        }
+    }
+
+    clear() {
+        let { seq, track, time } = this.cursor;
+        this.sequence.delete(seq, track, time);
+    }
 }
 
 module.exports = Model;
@@ -752,7 +776,12 @@ class Sequence {
 
     push(seq, track, time, note, velocity, len) {
         let event = { seq, track, time, note, velocity, len };
-        this.events.push(event);
+        let index = this.events.findIndex((e) => e.seq === seq && e.track === track && e.time === time && e.note === note);
+        if (index > -1) {
+            this.events.splice(index, 1, event);
+        } else {
+            this.events.push(event);
+        }
         this.save();
         return event;
     }
