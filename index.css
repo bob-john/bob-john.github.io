@@ -65,3 +65,8 @@ body {
   transform: translate(-50%, -50%);
   width: 40%;
 }
+
+.button.list-item {
+  height: 30px;
+  line-height: 30px;
+}

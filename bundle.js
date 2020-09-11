@@ -100,6 +100,8 @@ const Model = require('./model');
 const Popup = require('./ui/popup');
 const Row = require('./ui/row');
 const SVG = require('./ui/svg');
+const TabbedView = require('./ui/tabbed-view');
+const Column = require('./ui/column');
 
 window.onload = () => {
     let model = new Model();
@@ -107,59 +109,63 @@ window.onload = () => {
         new Row(
             new Label('SONG'),
             new Label('TEMPO'),
-            new Label('SEQ'),
             new Label('TRACK'),
+            new Label('SEQ'),
             new Label('BAR'),
-            new Label('LAYER'),
-
+            new Label('STEPS'),
         ),
         new Row(
             new Button('1', 'value').onmousedown(() => { }),
             new Button('120', 'value').onmousedown(() => { }),
-            new Button(new Binding(model.cursor, 'seq', (val) => 1 + val), 'value').onmousedown(() => { }),
-            new Button('1', 'value').onmousedown(() => body.present(new Popup(new ListView().onupdate((l) => {
-                l.items = Array.from(model.midi.outputs.values()).map((p) => { return { label: p.name, port: p } });
-            }).onmousedown((i) => {
-                model.player.output = i.port;
-                body.dismiss();
-            })))),
-            new Button(new Binding(model.cursor, 'bar', (val) => 1 + val), 'value').onmousedown(() => { }),
-            new Button('Notes', 'value'),
-        ),
-        new Row(
-            new Label('LEN', 5),
-            new Label('VEL', 1),
-            new Label('OCTAVE', 5),
-            new Label('INPUT', 2),
-        ),
-        new Row(
-            new NoteLenPicker(model, '&#119133;', 16),
-            new NoteLenPicker(model, '&#119134;', 8),
-            new NoteLenPicker(model, '&#119135;', 4),
-            new NoteLenPicker(model, '&#119136;', 2),
-            new NoteLenPicker(model, '&#119137;', 1),
-
-            new Button(new Binding(model, 'velocity', Binding.number), 'value').onmousedown(() => model.nextVelocity()),
-            new Button('-', 'value').onmousedown(() => model.cursor.octaveDown()),
-            new OctavePicker().onmousedown((i) => {
-                model.cursor.octave = -2 + i * 3;
-            }).onupdate((op) => {
-                for (let i = 0; i < 5; i++) {
-                    let { sequence, cursor } = model;
-                    let { seq, track, time } = model.cursor;
-                    let events = sequence.events.filter((e) => e.seq === seq && e.track === track && e.time === time && e.note >= (-2 + i * 3) * 12 && e.note < (-2 + i * 3 + 1) * 12);
-                    op.fill(i, -2 + i * 3 == cursor.octave ? 'gray' : events.length ? 'lightgray' : 'white');
-                }
+            new Button(new Binding(model.cursor, 'track', (val) => 1 + val), 'value').onmousedown(() => {
+                body.tabbedViews[0].selectedIndex = 1;
             }),
-            new Button('+', 'value').onmousedown(() => model.cursor.octaveUp()),
-            new Button('Tie', 'value'),
-            new Button('Rest', 'value'),
+            new Button(new Binding(model.cursor, 'seq', (val) => 1 + val), 'value').onmousedown(() => { }),
+            new Button(new Binding(model.cursor, 'bar', (val) => 1 + val), 'value').onmousedown(() => { }),
+            new Button('Notes', 'value').onmousedown(() => {
+                body.tabbedViews[0].selectedIndex = 0;
+            }),
         ),
-        new PianoKeyboard(model),
-        new Row(
-            new Label('STEPS'),
+        new Label('TRACK'),
+        new Row().onreload((view) => {
+            for (let i = 0; i < 16; i++) {
+                view.append(new Button(1 + i, 'value').onmousedown(() => model.cursor.track = i));
+            }
+        }).onupdate((view) => {
+            for (let i = 0; i < 16; i++) {
+                view.buttons[i].select(model.cursor.track === i);
+            }
+        }),
+        new TabbedView(
+            new Column(
+                new Row(
+                    new Label('LEN', 5),
+                    new Label('VEL', 1),
+                    new Label('OCTAVE', 5),
+                    new Label('INPUT', 2),
+                ),
+                new Row(
+                    new NoteLenPicker(model, '&#119133;', 16),
+                    new NoteLenPicker(model, '&#119134;', 8),
+                    new NoteLenPicker(model, '&#119135;', 4),
+                    new NoteLenPicker(model, '&#119136;', 2),
+                    new NoteLenPicker(model, '&#119137;', 1),
+
+                    new Button(new Binding(model, 'velocity', Binding.number), 'value').onmousedown(() => model.nextVelocity()),
+                    new Button('-', 'value').onmousedown(() => model.cursor.octaveDown()),
+                    new OctavePicker(model),
+                    new Button('+', 'value').onmousedown(() => model.cursor.octaveUp()),
+                    new Button('Tie', 'value'),
+                    new Button('Rest', 'value'),
+                ),
+                new PianoKeyboard(model),
+                new Row(
+                    new Label('STEPS'),
+                ),
+                new Sequencer(model),
+            ),
+            new TrackListView(),
         ),
-        new Sequencer(model),
         new Row(
             new Button('|<', 'small').onmousedown(() => model.top()),
             new Button('<<', 'small').onmousedown(() => model.bwd()),
@@ -172,18 +178,19 @@ window.onload = () => {
         ),
     );
     model.player.onchange = () => body.update();
-    model.load().then(() => body.update());
+    model.load().then(() => body.reload());
+    window.body = body;
+    window.model = model;
 };
 
 class PianoKeyboard extends SVG {
     constructor(model) {
         super();
         this.model = model;
-        this.element.style.flex = 3;
         this.element.setAttribute('viewBox', '0 0 630 60');
         this.keys = {};
         this.marks = {};
-        this.group = 'piano-keyboards';
+        this.group = 'pianoKeyboards';
 
         // white keys
         for (let i = 0; i < 3 * 7; i++) {
@@ -264,12 +271,13 @@ class PianoKeyboard extends SVG {
 }
 
 class OctavePicker extends SVG {
-    constructor() {
+    constructor(model) {
         super();
         this.element.style.flex = 3;
         this.element.setAttribute('viewBox', '0 0 150 30');
         this.marks = {};
-        this.group = 'octave-pickers';
+        this.group = 'octavePickers';
+        this.model = model;
 
         for (let i = 0; i < 5; i++) {
             let frame = this.rect(i * 30, 0, 30, 30, 'fill: transparent;')
@@ -283,6 +291,19 @@ class OctavePicker extends SVG {
     fill(i, color) {
         if (this.marks[i]) this.marks[i].style.fill = color;
     }
+
+    mousedown(i) {
+        this.model.cursor.octave = -2 + i * 3;
+    }
+
+    update() {
+        for (let i = 0; i < 5; i++) {
+            let { sequence, cursor } = this.model;
+            let { seq, track, time } = cursor;
+            let events = sequence.events.filter((e) => e.seq === seq && e.track === track && e.time === time && e.note >= (-2 + i * 3) * 12 && e.note < (-2 + i * 3 + 1) * 12);
+            this.fill(i, -2 + i * 3 == cursor.octave ? 'gray' : events.length ? 'lightgray' : 'white');
+        }
+    }
 }
 
 class Sequencer extends SVG {
@@ -292,7 +313,7 @@ class Sequencer extends SVG {
         this.steps = {};
         this.marks = {};
         this.fills = {};
-        this.group = 'sequencers';
+        this.group = 'stepSequencers';
         this.model = model
 
         for (let i = 0; i < 16; i++) {
@@ -379,7 +400,66 @@ class NoteLenPicker extends Button {
     }
 }
 
-},{"./message":3,"./model":4,"./ui/binding":7,"./ui/body":8,"./ui/button":9,"./ui/label":11,"./ui/list-view":12,"./ui/popup":13,"./ui/row":14,"./ui/svg":15}],3:[function(require,module,exports){
+class TrackListView extends Row {
+    constructor() {
+        super();
+        for (let j = 0; j < 2; j++) {
+            let col = new Column(new Row(
+                new Label('TR').flex(1),
+                new Label('PORT').flex(6),
+                new Label('CH').flex(1),
+                new Label('M').flex(1),
+            )).flex(1);
+            for (let i = 0; i < 8; i++) {
+                let track = j * 8 + i;
+                col.append(new Row(
+                    new Button(1 + track, 'list-item').flex(1).onmousedown(() => {
+                        model.cursor.track = track;
+                    }),
+                    new Button('', 'list-item').flex(6).onmousedown(() => {
+                        body.present(new Popup(new ListView().onreload((l) => {
+                            l.items = Array.from(model.midi.outputs.values()).map((p) => { return { label: p.name, port: p } }).concat([{ label: '(NONE)', port: null }]);
+                        }).onmousedown((it) => {
+                            if (it.port) {
+                                model.trackList.assign(track, it.port.name);
+                                model.player.output = it.port;
+                                model.cursor.track = track;
+                            } else {
+                                model.trackList.assign(track, null);
+                                model.player.output = null;
+                                model.cursor.track = track;
+                            }
+                            body.dismiss();
+                        })));
+                    }),
+                    new Button('', 'list-item').flex(1),
+                    new Button('OFF', 'list-item').flex(1).onmousedown(() => {
+                        model.trackList.tracks[track].muted = !model.trackList.tracks[track].muted;
+                    }),
+                ));
+            }
+            this.append(col);
+        }
+    }
+
+    update() {
+        super.update();
+        let i = 0;
+        for (let col of this.columns) {
+            for (let row of col.rows) {
+                if (row.buttons) {
+                    let { port, channel, muted } = model.trackList.tracks[i];
+                    row.buttons[0].select(model.cursor.track === i);
+                    row.buttons[1].element.innerHTML = port === null ? '' : port;
+                    row.buttons[2].element.innerHTML = channel === null ? '' : 1 + channel;
+                    row.buttons[3].element.innerHTML = muted ? 'ON' : 'OFF';
+                    i++;
+                }
+            }
+        }
+    }
+}
+},{"./message":3,"./model":4,"./ui/binding":8,"./ui/body":9,"./ui/button":10,"./ui/column":11,"./ui/label":12,"./ui/list-view":13,"./ui/popup":14,"./ui/row":15,"./ui/svg":16,"./ui/tabbed-view":17}],3:[function(require,module,exports){
 class Message {
     constructor(data) {
         this.data = Array.from(data);
@@ -477,6 +557,7 @@ module.exports = Message;
 const Cursor = require('./cursor');
 const Player = require('./player');
 const Sequence = require('./sequence');
+const TrackList = require('./track-list');
 
 class Model {
     constructor() {
@@ -484,6 +565,7 @@ class Model {
         this.cursor = new Cursor();
         this.player = new Player(this);
         this.poly = false;
+        this.trackList = new TrackList();
         this.noteOn = [];
     }
 
@@ -556,7 +638,7 @@ class Model {
 }
 
 module.exports = Model;
-},{"./cursor":1,"./player":5,"./sequence":6}],5:[function(require,module,exports){
+},{"./cursor":1,"./player":5,"./sequence":6,"./track-list":7}],5:[function(require,module,exports){
 const Message = require('./message');
 
 class Player {
@@ -700,6 +782,30 @@ class Sequence {
 
 module.exports = Sequence;
 },{}],7:[function(require,module,exports){
+class TrackList {
+    constructor() {
+        this.tracks = [];
+        for (let i = 0; i < 16; i++) {
+            this.tracks.push({ track: 0, port: null, channel: null, muted: false });
+        }
+    }
+
+    assign(track, port) {
+        if (port) {
+            let ch = Math.min(Math.max(0, ...this.tracks.filter((t) => t.port === port).map((t) => t.channel + 1)), 15);
+            this.tracks[track].port = port;
+            if (this.tracks[track].channel === null) {
+                this.tracks[track].channel = ch;
+            }
+        } else {
+            this.tracks[track].port = null;
+            this.tracks[track].channel = null;
+        }
+    }
+}
+
+module.exports = TrackList;
+},{}],8:[function(require,module,exports){
 class Binding {
     constructor(obj, key, transform) {
         this.obj = obj;
@@ -718,7 +824,7 @@ class Binding {
 }
 
 module.exports = Binding;
-},{}],8:[function(require,module,exports){
+},{}],9:[function(require,module,exports){
 const ViewGroup = require('./view-group');
 
 class Body extends ViewGroup {
@@ -741,7 +847,7 @@ class Body extends ViewGroup {
     }
 
     present(popup) {
-        popup.update();
+        popup.reload();
         this.popup && this.popup.element.remove();
         this.overlay.append(popup.element);
         this.element.append(this.overlay);
@@ -752,11 +858,12 @@ class Body extends ViewGroup {
         this.overlay.remove();
         this.popup && this.popup.element.remove();
         delete this.popup;
+        this.update();
     }
 }
 
 module.exports = Body;
-},{"./view-group":16}],9:[function(require,module,exports){
+},{"./view-group":18}],10:[function(require,module,exports){
 const View = require('./view');
 
 class Button extends View {
@@ -767,17 +874,23 @@ class Button extends View {
         if (className) {
             this.element.classList.add(className);
         }
-        this.element.onmousedown = () => {
-            this.element.classList.toggle('active', true);
-            this.mousedown();
+        this.element.onmousedown = (event) => {
+            if (event.target === this.element) {
+                this.element.classList.toggle('active', true);
+                this.mousedown();
+            }
         };
-        this.element.onmouseup = () => {
-            this.element.classList.toggle('active', this.selected);
-            this.mouseup();
+        this.element.onmouseup = (event) => {
+            if (event.target === this.element) {
+                this.element.classList.toggle('active', this.selected);
+                this.mouseup();
+            }
         };
-        this.element.onmouseout = () => {
-            this.element.classList.toggle('active', this.selected);
-            this.mouseup();
+        this.element.onmouseout = (event) => {
+            if (event.target === this.element) {
+                this.element.classList.toggle('active', this.selected);
+                this.mouseup();
+            }
         };
         this.group = 'buttons';
         this.label = label;
@@ -796,18 +909,19 @@ class Button extends View {
 }
 
 module.exports = Button;
-},{"./view":17}],10:[function(require,module,exports){
+},{"./view":19}],11:[function(require,module,exports){
 const ViewGroup = require("./view-group");
 
 class Column extends ViewGroup {
-    constructor() {
-        super(document.createElement('div'));
+    constructor(...views) {
+        super(document.createElement('div'), ...views);
         this.element.classList.add('column');
+        this.group = 'columns';
     }
 }
 
 module.exports = Column;
-},{"./view-group":16}],11:[function(require,module,exports){
+},{"./view-group":18}],12:[function(require,module,exports){
 const View = require('./view');
 
 class Label extends View {
@@ -821,15 +935,13 @@ class Label extends View {
 }
 
 module.exports = Label;
-},{"./view":17}],12:[function(require,module,exports){
+},{"./view":19}],13:[function(require,module,exports){
 const Column = require('./column');
 const Button = require('./button');
 
 class ListView extends Column {
     set items(items) {
-        for (let child of this.element.children) {
-            child.remove();
-        }
+        this.element.innerHTML = null;
         for (let item of items) {
             this.append(new Button(item.label, 'value').onmousedown(() => this.mousedown(item)));
         }
@@ -837,25 +949,20 @@ class ListView extends Column {
 }
 
 module.exports = ListView;
-},{"./button":9,"./column":10}],13:[function(require,module,exports){
+},{"./button":10,"./column":11}],14:[function(require,module,exports){
 const View = require('./view');
+const ViewGroup = require('./view-group');
 
-class Popup extends View {
+class Popup extends ViewGroup {
     constructor(view) {
         super(document.createElement('div'));
         this.element.classList.add('popup');
-        this.element.append(view.element);
-        this.view = view;
-    }
-
-    update() {
-        this.view.update();
-        super.update();
+        this.append(view);
     }
 }
 
 module.exports = Popup;
-},{"./view":17}],14:[function(require,module,exports){
+},{"./view":19,"./view-group":18}],15:[function(require,module,exports){
 const ViewGroup = require('./view-group');
 
 class Row extends ViewGroup {
@@ -867,7 +974,7 @@ class Row extends ViewGroup {
 }
 
 module.exports = Row;
-},{"./view-group":16}],15:[function(require,module,exports){
+},{"./view-group":18}],16:[function(require,module,exports){
 const View = require('./view');
 
 class SVG extends View {
@@ -899,7 +1006,45 @@ class SVG extends View {
 }
 
 module.exports = SVG;
-},{"./view":17}],16:[function(require,module,exports){
+},{"./view":19}],17:[function(require,module,exports){
+const View = require('./view');
+const ViewGroup = require('./view-group');
+
+class TabbedView extends ViewGroup {
+    constructor(...views) {
+        super(document.createElement('div'));
+        this.element.classList.add('tabbed-view-content');
+        this.views = views;
+        this.selectedIndex = 0;
+        this.group = 'tabbedViews';
+    }
+
+    set selectedIndex(i) {
+        let view = this.selectedView;
+        if (view) {
+            this.remove(view);
+        }
+        view = this.views[i];
+        if (view) {
+            view.reload();
+            this.append(view);
+            this.selectedIndex_ = i;
+        } else {
+            this.selectedIndex_ = undefined;
+        }
+    }
+
+    get selectedIndex() {
+        return this.selectedIndex_;
+    }
+
+    get selectedView() {
+        return this.views[this.selectedIndex_];
+    }
+}
+
+module.exports = TabbedView;
+},{"./view":19,"./view-group":18}],18:[function(require,module,exports){
 const View = require('./view');
 
 class ViewGroup extends View {
@@ -922,9 +1067,33 @@ class ViewGroup extends View {
         }
     }
 
+    remove(view) {
+        let { element, group } = view;
+        if (this[group]) {
+            let i = this[group].indexOf(element);
+            if (i > -1) {
+                this[group].splice(i, 1);
+            }
+        }
+        let i = this.children.indexOf(view);
+        if (i > -1) {
+            this.children.splice(i, 1);
+        }
+        element.remove();
+        view.parent = null;
+    }
+
+    reload() {
+        if (this.onreload_) {
+            super.reload();
+        } else {
+            this.children.forEach((view) => view.reload());
+        }
+    }
+
     update() {
         super.update();
-        this.children.forEach((view) => view.update && view.update());
+        this.children.forEach((view) => view.update());
     }
 
     notify(event, ...args) {
@@ -937,10 +1106,20 @@ class ViewGroup extends View {
 }
 
 module.exports = ViewGroup;
-},{"./view":17}],17:[function(require,module,exports){
+},{"./view":19}],19:[function(require,module,exports){
 class View {
     constructor(element) {
         this.element = element;
+    }
+
+    flex(flex) {
+        this.element.style.flex = flex;
+        return this;
+    }
+
+    onreload(handler) {
+        this.onreload_ = handler;
+        return this;
     }
 
     onmousedown(handler) {
@@ -958,6 +1137,18 @@ class View {
         return this;
     }
 
+    reload() {
+        if (this.onreload_) {
+            this.element.innerHTML = null;
+            this.onreload_(this);
+            this.update();
+        }
+    }
+
+    update() {
+        this.onupdate_ && this.onupdate_(this);
+    }
+
     mousedown(...args) {
         this.onmousedown_ && this.onmousedown_(...args);
         this.parent && this.parent.notify('update');
@@ -966,10 +1157,6 @@ class View {
     mouseup(...args) {
         this.onmouseup_ && this.onmouseup_(...args);
         this.parent && this.parent.notify('update');
-    }
-
-    update() {
-        this.onupdate_ && this.onupdate_(this);
     }
 
     notify(event, ...args) { }
