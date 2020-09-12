@@ -318,15 +318,17 @@ class OctavePicker extends SVG {
 class Sequencer extends SVG {
     constructor(model) {
         super();
-        this.element.setAttribute('viewBox', '0 0 480 60');
+        this.stepCount = 16;
+        this.element.setAttribute('viewBox', `0 0 ${this.stepCount * 30} 60`);
         this.steps = {};
         this.marks = {};
         this.fills = {};
+        this.beats = {};
         this.group = 'stepSequencers';
         this.model = model
 
-        for (let i = 0; i < 16; i++) {
-            let step = this.steps[i] = this.rect(i * 30 + 1, 0, 28, 60, 'fill: whitesmoke');
+        for (let i = 0; i < this.stepCount; i++) {
+            let step = this.steps[i] = this.rect(i * 30, 10, 29, 60, 'fill: whitesmoke');
             step.onmousedown = () => {
                 step.setAttribute('fill', 'gray');
                 this.mousedown(i);
@@ -339,13 +341,11 @@ class Sequencer extends SVG {
                 step.setAttribute('fill', this.fills[i] || 'whitesmoke');
                 this.mouseup(i);
             };
-            if (i % 4 === 0) {
-                this.line(i * 30, 0, i * 30, 60, 'stroke: gray; stroke-width: 1;');
-            }
-            if (i === 15) {
-                this.line(i * 30 + 30, 0, i * 30 + 30, 60, 'stroke: gray; stroke-width: 1;');
-            }
             this.marks[i] = this.circle(i * 30 + 15, 50, 4, 'fill: gray; display: none;');
+        }
+        for (let i = 0; i < this.stepCount; i += 4) {
+            this.rect(i * 30, 0, 4 * 30 - 1, 9, 'fill: whitesmoke;');
+            this.beats[i] = this.text(i * 30 + 2 * 30, 5, 'fill: gray; font-size: 8px; dominant-baseline: middle; pointer-events: none; user-select: none;');
         }
     }
 
@@ -382,10 +382,16 @@ class Sequencer extends SVG {
 
     update() {
         let { seq, track, bar, step } = this.model.cursor;
-        for (let i = 0; i < 16; i++) {
+        for (let i = 0; i < this.stepCount; i++) {
             let events = this.model.sequence.events.filter((e) => e.seq === seq && e.track === track && e.time === bar * 16 + i);
             this.fill(i, i === step ? 'deepskyblue' : 'whitesmoke');
             this.mark(i, events.length > 0 ? 'initial' : 'none');
+        }
+        for (let i = 0; i < this.stepCount; i += 4) {
+            let step = model.cursor.bar * 16 + i;
+            let bar = 1 + Math.floor(step / 16);
+            let beat = 1 + Math.floor((step % 16) / 4);
+            this.beats[i].innerHTML = `${bar}.${beat}`;
         }
         super.update();
     }
@@ -595,6 +601,7 @@ class Model {
 
     top() {
         this.cursor.bar = 0;
+        this.cursor.step = 0;
     }
 
     play() {
@@ -869,6 +876,11 @@ class Body extends ViewGroup {
         }
     }
 
+    reload() {
+        super.reload();
+        this.update();
+    }
+
     notify(event, ...args) {
         super.notify(event, ...args);
         if (event === 'update') {
@@ -1022,6 +1034,10 @@ class SVG extends View {
 
     circle(cx, cy, r, style) {
         return this.tag('circle', { cx, cy, r }, style);
+    }
+
+    text(x, y, style) {
+        return this.tag('text', { x, y }, style);
     }
 
     tag(name, attr, style) {
