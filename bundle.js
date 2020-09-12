@@ -3007,17 +3007,18 @@ class Sequencer extends SVG {
     }
 
     update() {
-        let { seq, track, bar, step } = this.model.cursor;
+        let { seq, track } = model.cursor;
+        let { bar, step } = model.player.playing ? model.player : this.model.cursor;
         for (let i = 0; i < this.stepCount; i++) {
-            let events = this.model.sequence.events.filter((e) => e.seq === seq && e.track === track && e.time === bar * 16 + i);
+            let events = model.sequence.events.filter((e) => e.seq === seq && e.track === track && e.time === bar * 16 + i);
             this.fill(i, i === step ? 'deepskyblue' : 'whitesmoke');
             this.mark(i, events.length > 0 ? 'initial' : 'none');
         }
         for (let i = 0; i < this.stepCount; i += 4) {
-            let step = model.cursor.bar * 16 + i;
-            let bar = 1 + Math.floor(step / 16);
-            let beat = 1 + Math.floor((step % 16) / 4);
-            this.beats[i].element.innerHTML = `${bar}.${beat}`;
+            let step = bar * 16 + i;
+            let x = 1 + Math.floor(step / 16);
+            let y = 1 + Math.floor((step % 16) / 4);
+            this.beats[i].element.innerHTML = `${x}.${y}`;
         }
         super.update();
     }
@@ -3342,24 +3343,24 @@ class Player {
         }
         let { sequence, cursor } = this.model;
         let time = this.tick * 4 / this.ppq;
-        for (let event of sequence.events.filter((e) => e.seq === cursor.seq && (e.time === time || e.time + e.len === time))) {
-            if (event.time === time) {
-                this.send(Message.noteOn(event.track, event.note, event.velocity));
-                this.inflight.push({ track: event.track, note: event.note });
-            } else if (event.time + event.len === time) {
-                this.send(Message.noteOff(event.track, event.note));
-                let index = this.inflight.findIndex((e) => e.track === event.track && e.note === event.note);
-                if (index >= 0) {
-                    this.inflight.splice(index, 1);
+        if (time < sequence.endOfTrack(cursor.seq)) {
+            for (let event of sequence.events.filter((e) => e.seq === cursor.seq && (e.time === time || e.time + e.len === time))) {
+                if (event.time === time) {
+                    this.send(Message.noteOn(event.track, event.note, event.velocity));
+                    this.inflight.push({ track: event.track, note: event.note });
+                } else if (event.time + event.len === time) {
+                    this.send(Message.noteOff(event.track, event.note));
+                    let index = this.inflight.findIndex((e) => e.track === event.track && e.note === event.note);
+                    if (index >= 0) {
+                        this.inflight.splice(index, 1);
+                    }
                 }
             }
-        }
-        if (time === sequence.endOfTrack(cursor.seq)) {
-            this.stop();
-        } else {
+            this.onchange && this.onchange();
             this.tick++;
+        } else {
+            this.stop();
         }
-        this.onchange && this.onchange();
     }
 
     send(message, preview = false) {
@@ -3376,6 +3377,14 @@ class Player {
 
     set time(time) {
         this.tick = time * this.ppq / 4;
+    }
+
+    get bar() {
+        return Math.floor(this.time / 16);
+    }
+
+    get step() {
+        return Math.floor(this.time) % 16;
     }
 }
 
