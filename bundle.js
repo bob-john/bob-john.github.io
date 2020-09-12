@@ -3017,7 +3017,7 @@ class Sequencer extends SVG {
             let step = model.cursor.bar * 16 + i;
             let bar = 1 + Math.floor(step / 16);
             let beat = 1 + Math.floor((step % 16) / 4);
-            this.beats[i].innerHTML = `${bar}.${beat}`;
+            this.beats[i].element.innerHTML = `${bar}.${beat}`;
         }
         super.update();
     }
@@ -3173,11 +3173,11 @@ class Message {
     }
 
     static noteOn(ch, note, velocity = 100) {
-        return new Message([0x90 | (ch & 0x0f), note, velocity]);
+        return new Message([0x90 | clamp(ch, 0, 15), clamp(note, 0, 127), clamp(velocity, 0, 127)]);
     }
 
     static noteOff(ch, note) {
-        return new Message([0x80 | (ch & 0x0f), note, 0x00]);
+        return new Message([0x80 | clamp(ch, 0, 15), clamp(note, 0, 127), 0]);
     }
 
     static clock() {
@@ -3191,6 +3191,10 @@ class Message {
     static stop() {
         return new Message([0xfc]);
     }
+}
+
+function clamp(val, min, max) {
+    return Math.max(min, Math.min(val, max));
 }
 
 module.exports = Message;
@@ -3591,10 +3595,6 @@ class ListView extends Column {
             this.append(button);
         }
     }
-
-    reload() {
-        this.element.dispatchEvent(new CustomEvent('reload', { detail: { view: this } }));
-    }
 }
 
 module.exports = ListView;
@@ -3739,10 +3739,12 @@ class ViewGroup extends View {
     }
 
     reload() {
+        this.element.dispatchEvent(new CustomEvent('reload', { detail: { view: this } }));
         this.children.forEach((view) => view.reload());
     }
 
     update() {
+        this.element.dispatchEvent(new CustomEvent('update', { detail: { view: this } }));
         this.children.forEach((view) => view.update());
     }
 }
